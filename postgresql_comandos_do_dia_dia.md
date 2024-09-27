@@ -83,15 +83,11 @@ Se você não precisar do suporte a IPv6 ou se não tiver uma interface configur
 
 Abra o arquivo de configuração:
 
-bash
-Copiar código
 ````
 sudo nano /etc/postfix/main.cf
 ````
 Localize a linha que contém inet_interfaces. Pode estar como:
 
-plaintext
-Copiar código
 ````
 inet_interfaces = all
 ````
