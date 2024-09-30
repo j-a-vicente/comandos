@@ -8,6 +8,38 @@
 
 
 
+## Retorna as configurações do servidor:
+````
+SELECT name, setting FROM pg_settings
+WHERE name = 'wal_level';
+
+
+SELECT name, setting FROM pg_settings
+WHERE name IN ('shared_buffers', 'work_mem', 'maintenance_work_mem', 'effective_cache_size');
+
+SELECT 
+    name,
+    setting,
+    unit,
+    CASE 
+        WHEN name IN ('shared_buffers', 'work_mem', 'maintenance_work_mem', 'effective_cache_size') THEN 
+            CASE 
+                WHEN unit = '8kB' THEN (setting::bigint * 8192) / (1024 * 1024 * 1024) -- Convert 8kB to GB
+                WHEN unit = 'kB' THEN (setting::bigint * 1024) / (1024 * 1024 * 1024) -- Convert kB to GB
+                ELSE setting::bigint / (1024 * 1024 * 1024) -- Assume bytes for other units
+            END
+        ELSE NULL
+    END AS setting_in_gb
+FROM pg_settings
+WHERE name IN ('shared_buffers', 'work_mem', 'maintenance_work_mem', 'effective_cache_size');
+
+````
+
+
+
+
+
+
 
 
 ## Serviço postfix fora do ar {#servico-postfix}
@@ -125,4 +157,77 @@ now() - state_change AS idle_duration
 FROM pg_stat_activity
 WHERE state IN ('idle', 'idle in transaction', 'idle in transaction (aborted)', 'disabled');
 AND now() - state_change > interval '120 minutes';
+````
+
+
+## Retorna locks
+````
+WITH waiting_locks AS (
+    SELECT 
+        a.pid AS waiting_pid,
+        a.usename AS waiting_user,
+        a.query AS waiting_query,
+        a.state,
+        a.application_name,
+        a.backend_start,
+        a.query_start,
+        l.locktype,
+        l.database,
+        l.relation,
+        l.page,
+        l.tuple,
+        l.virtualxid,
+        l.transactionid,
+        l.virtualtransaction
+    FROM 
+        pg_catalog.pg_stat_activity a
+    JOIN 
+        pg_catalog.pg_locks l ON a.pid = l.pid
+    WHERE 
+        NOT l.granted
+),
+blocking_locks AS (
+    SELECT 
+        a.pid AS blocking_pid,
+        a.usename AS blocking_user,
+        a.query AS blocking_query,
+        l.locktype,
+        l.database,
+        l.relation,
+        l.page,
+        l.tuple,
+        l.virtualxid,
+        l.transactionid,
+        l.virtualtransaction
+    FROM 
+        pg_catalog.pg_stat_activity a
+    JOIN 
+        pg_catalog.pg_locks l ON a.pid = l.pid
+    WHERE 
+        l.granted
+)
+SELECT 
+    bl.blocking_pid,
+    bl.blocking_user,
+    bl.blocking_query,
+    wl.waiting_pid,
+    wl.waiting_user,
+    wl.waiting_query,
+    wl.state,
+    wl.application_name,
+    wl.backend_start,
+    wl.query_start,
+    wl.locktype
+FROM 
+    waiting_locks wl
+JOIN 
+    blocking_locks bl ON 
+    wl.locktype = bl.locktype AND 
+    wl.database IS NOT DISTINCT FROM bl.database AND 
+    wl.relation IS NOT DISTINCT FROM bl.relation AND 
+    wl.page IS NOT DISTINCT FROM bl.page AND 
+    wl.tuple IS NOT DISTINCT FROM bl.tuple AND 
+    wl.virtualxid IS NOT DISTINCT FROM bl.virtualxid AND 
+    wl.transactionid IS NOT DISTINCT FROM bl.transactionid AND 
+    wl.virtualtransaction IS NOT DISTINCT FROM bl.virtualtransaction;
 ````
